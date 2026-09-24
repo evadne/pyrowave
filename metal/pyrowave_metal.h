@@ -166,12 +166,22 @@ typedef struct pyrowave_cpu_buffer
 } pyrowave_cpu_buffer;
 
 // IOSurface input for the encoder. Two layouts are accepted:
-//   - one biplanar NV12 surface in planes[0], with planes[1] and planes[2] NULL
-//   - three single plane R8 surfaces, one per YUV component
+//   - one biplanar 4:2:0 surface (NV12, or P010 style with 16-bit components) in
+//     planes[0], with planes[1] and planes[2] NULL
+//   - three single plane surfaces, one per YUV component
+// Components are 8- or 16-bit, read from each plane's bytes per element (1 or 2 per
+// component: R8 or R16 for a single component plane, RG8 or RG16 for interleaved
+// chroma), and must be the same size in every plane. A 16-bit component is read as
+// its value over 65535, so 10-bit samples belong in the high bits, as P010 and
+// CoreVideo's 'x420' carry them.
 // The library wraps these in MTLTextures itself, so the caller does not have to
-// match any particular pixel format or usage. For the NV12 case the chroma plane
+// match any particular pixel format or usage. For the biplanar case the chroma plane
 // is bound twice with different channel swizzles rather than being deinterleaved,
 // so neither layout costs a copy.
+//
+// What this encoder's GPU input accepts beyond upstream's, for callers to test at
+// compile time.
+#define PYROWAVE_METAL_GPU_INPUT_16_BIT 1
 typedef struct pyrowave_gpu_input
 {
 	pyrowave_iosurface planes[3];

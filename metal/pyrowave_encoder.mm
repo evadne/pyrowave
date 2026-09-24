@@ -506,8 +506,8 @@ id<MTLTexture> wrap_surface_plane(pyrowave_device device, IOSurfaceRef surface, 
 // dwt gathers the red channel of whatever it is handed, so an interleaved chroma plane
 // is bound twice with the wanted component broadcast into red -- what the Vulkan API
 // documents for NV12 too ("pass in the same plane for Cb and Cr, but use swizzle"). An
-// R8 format view of an RG8 texture is impossible, 8 versus 16 bpp, so only the swizzle
-// changes.
+// R8 format view of an RG8 texture is impossible, 8 versus 16 bpp (and likewise R16 of
+// RG16), so only the swizzle changes.
 bool make_interleaved_chroma_views(pyrowave_device device, InputTextures &input, id<MTLTexture> chroma)
 {
 	static const MTLTextureSwizzle components[2] = { MTLTextureSwizzleRed, MTLTextureSwizzleGreen };
@@ -987,8 +987,8 @@ pyrowave_result upload_cpu_input(pyrowave_encoder encoder, const pyrowave_cpu_bu
 	return PYROWAVE_SUCCESS;
 }
 
-// Wraps the caller's IOSurfaces: either one biplanar NV12 surface, or three
-// single plane R8 surfaces.
+// Wraps the caller's IOSurfaces: either one biplanar 4:2:0 surface, or three
+// single plane surfaces, with 8- or 16-bit components.
 pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_input *input,
                                InputTextures &wrapped)
 {
@@ -1036,6 +1036,33 @@ pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_inpu
 		return true;
 	};
 
+	// A plane's bytes per element picks its texture format: 8- or 16-bit unsigned
+	// normalised components, which dwt samples as floats in [0, 1] either way. Every
+	// plane must carry components of one size, so that luma and chroma share a scale.
+	int component_bytes = 0;
+	auto plane_format = [&](IOSurfaceRef surf, int plane, int components) {
+		const int bytes = int(IOSurfaceGetBytesPerElementOfPlane(surf, plane));
+		if (bytes != components && bytes != 2 * components)
+		{
+			device->log("Input surface plane %d has %d bytes per element, expected %d or %d "
+			            "(8- or 16-bit components).", plane, bytes, components, 2 * components);
+			return MTLPixelFormatInvalid;
+		}
+
+		const int size = bytes / components;
+		if (component_bytes && size != component_bytes)
+		{
+			device->log("Input surface plane %d has %d-bit components, but an earlier plane has %d-bit.",
+			            plane, 8 * size, 8 * component_bytes);
+			return MTLPixelFormatInvalid;
+		}
+
+		component_bytes = size;
+		if (components == 1)
+			return size == 1 ? MTLPixelFormatR8Unorm : MTLPixelFormatR16Unorm;
+		return size == 1 ? MTLPixelFormatRG8Unorm : MTLPixelFormatRG16Unorm;
+	};
+
 	if (biplanar)
 	{
 		if (!chroma_420)
@@ -1056,11 +1083,16 @@ pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_inpu
 		    !plane_matches(surface(0), 1, chroma_width, chroma_height))
 			return PYROWAVE_ERROR_INVALID_ARGUMENT;
 
+		const MTLPixelFormat luma_format = plane_format(surface(0), 0, 1);
+		const MTLPixelFormat chroma_format = plane_format(surface(0), 1, 2);
+		if (luma_format == MTLPixelFormatInvalid || chroma_format == MTLPixelFormatInvalid)
+			return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
 		wrapped.sampled[0] = wrapped.adopt(wrap_surface_plane(
-				device, surface(0), 0, MTLPixelFormatR8Unorm, layout.width, layout.height, false));
+				device, surface(0), 0, luma_format, layout.width, layout.height, false));
 
 		auto *chroma = wrapped.adopt(wrap_surface_plane(
-				device, surface(0), 1, MTLPixelFormatRG8Unorm, chroma_width, chroma_height, true));
+				device, surface(0), 1, chroma_format, chroma_width, chroma_height, true));
 
 		if (!wrapped.sampled[0] || !chroma)
 			return PYROWAVE_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -1078,8 +1110,12 @@ pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_inpu
 			if (!plane_matches(surface(i), 0, width, height))
 				return PYROWAVE_ERROR_INVALID_ARGUMENT;
 
+			const MTLPixelFormat format = plane_format(surface(i), 0, 1);
+			if (format == MTLPixelFormatInvalid)
+				return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
 			wrapped.sampled[i] = wrapped.adopt(wrap_surface_plane(
-					device, surface(i), 0, MTLPixelFormatR8Unorm, width, height, false));
+					device, surface(i), 0, format, width, height, false));
 
 			if (!wrapped.sampled[i])
 				return PYROWAVE_ERROR_OUT_OF_DEVICE_MEMORY;
