@@ -2,14 +2,14 @@
 
 # Only checks out what is necessary to build standalone.
 #
-GRANITE_COMMIT=9d44761debb9ac31d8d800cac8b030a7a0390b7e
+GRANITE_COMMIT=e96891e77d89f11dc4aa3f1789af08e1192544ad
 
 if [ -d Granite ]; then
 	cd Granite
 	git fetch origin
 	git checkout $GRANITE_COMMIT
 else
-	git clone https://github.com/Themaister/Granite
+	git clone https://github.com/evadne/Granite
 	cd Granite
 	git checkout $GRANITE_COMMIT
 fi
