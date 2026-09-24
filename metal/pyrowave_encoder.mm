@@ -194,13 +194,13 @@ uint32_t floor_log2(uint32_t v)
 	return result;
 }
 
-// The three single channel textures the DWT samples at level 0. For NV12 input two are
-// swizzled views of one chroma texture, so the backing objects are tracked separately.
+// The three single channel textures the DWT samples at level 0. For biplanar input two
+// are swizzled views of one chroma texture, so the backing objects are tracked separately.
 struct InputTextures
 {
 	id<MTLTexture> sampled[NumComponents] = {};
-	// Worst case is NV12: the luma plane, the interleaved chroma plane and its two
-	// swizzled views. The three plane paths only ever use three.
+	// Worst case is biplanar input: the luma plane, the interleaved chroma plane and its
+	// two swizzled views. The three plane paths only ever use three.
 	static constexpr int MaxOwned = 4;
 	id<MTLTexture> owned[MaxOwned] = {};
 	int num_owned = 0;
@@ -217,7 +217,7 @@ struct InputTextures
 
 	void release_all()
 	{
-		// sampled[] aliases owned[] for NV12, but each is an independent strong
+		// sampled[] aliases owned[] for biplanar input, but each is an independent strong
 		// reference under ARC, so both arrays have to be cleared.
 		for (int i = 0; i < num_owned; i++)
 			owned[i] = nil;
@@ -987,8 +987,8 @@ pyrowave_result upload_cpu_input(pyrowave_encoder encoder, const pyrowave_cpu_bu
 	return PYROWAVE_SUCCESS;
 }
 
-// Wraps the caller's IOSurfaces: either one biplanar 4:2:0 surface, or three
-// single plane surfaces, with 8- or 16-bit components.
+// Wraps the caller's IOSurfaces: either one biplanar surface, or three single plane
+// surfaces, with 8- or 16-bit components.
 pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_input *input,
                                InputTextures &wrapped)
 {
@@ -1065,13 +1065,9 @@ pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_inpu
 
 	if (biplanar)
 	{
-		if (!chroma_420)
-		{
-			device->log("Biplanar NV12 input has half resolution chroma, "
-			            "so it cannot feed a 4:4:4 encoder.");
-			return PYROWAVE_ERROR_INVALID_ARGUMENT;
-		}
-
+		// The chroma plane is half size for 4:2:0 (NV12, P010) and full size for 4:4:4
+		// (CoreVideo's '444v', '444f', 'x444', 'xf44' and 'sv44', OBS's P416);
+		// plane_matches holds it to the encoder's chroma extent either way.
 		if (IOSurfaceGetPlaneCount(surface(0)) != 2)
 		{
 			device->log("Expected a biplanar surface in planes[0], but it has %zu planes.",
