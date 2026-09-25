@@ -19,6 +19,20 @@ enum class ChromaSubsampling
 	Chroma420,
 	Chroma444
 };
+
+// The colour fields of a frame's sequence header. Each holds its field's one bit value, as
+// the COLOR_PRIMARIES_*, TRANSFER_FUNCTION_*, YCBCR_TRANSFORM_*, YCBCR_RANGE_* and
+// CHROMA_SITING_* enums define it. A zero-initialised value is what the encoder writes
+// until it is given a colour.
+struct BitstreamColor
+{
+	uint8_t color_primaries : 1;
+	uint8_t transfer_function : 1;
+	uint8_t ycbcr_transform : 1;
+	uint8_t ycbcr_range : 1;
+	uint8_t chroma_siting : 1;
+};
+
 struct BitstreamHeader
 {
 	uint16_t ballot;
@@ -49,6 +63,26 @@ struct BitstreamSequenceHeader
 
 static_assert(sizeof(BitstreamSequenceHeader) == 8, "BitstreamSequenceHeader is not 8 bytes.");
 
+static inline void set_sequence_header_color(BitstreamSequenceHeader &header, const BitstreamColor &color)
+{
+	header.color_primaries = color.color_primaries;
+	header.transfer_function = color.transfer_function;
+	header.ycbcr_transform = color.ycbcr_transform;
+	header.ycbcr_range = color.ycbcr_range;
+	header.chroma_siting = color.chroma_siting;
+}
+
+static inline BitstreamColor get_sequence_header_color(const BitstreamSequenceHeader &header)
+{
+	BitstreamColor color = {};
+	color.color_primaries = header.color_primaries;
+	color.transfer_function = header.transfer_function;
+	color.ycbcr_transform = header.ycbcr_transform;
+	color.ycbcr_range = header.ycbcr_range;
+	color.chroma_siting = header.chroma_siting;
+	return color;
+}
+
 // Written by the encoder's block packing pass, one per 32x32 block. A zero
 // num_words means the block was not coded.
 struct BitstreamPacket
@@ -66,6 +100,36 @@ enum
 {
 	CHROMA_RESOLUTION_420 = 0,
 	CHROMA_RESOLUTION_444 = 1
+};
+
+enum
+{
+	CHROMA_SITING_CENTER = 0,
+	CHROMA_SITING_LEFT = 1
+};
+
+enum
+{
+	YCBCR_RANGE_FULL = 0,
+	YCBCR_RANGE_LIMITED = 1
+};
+
+enum
+{
+	COLOR_PRIMARIES_BT709 = 0,
+	COLOR_PRIMARIES_BT2020 = 1
+};
+
+enum
+{
+	YCBCR_TRANSFORM_BT709 = 0,
+	YCBCR_TRANSFORM_BT2020 = 1
+};
+
+enum
+{
+	TRANSFER_FUNCTION_BT709 = 0,
+	TRANSFER_FUNCTION_PQ = 1
 };
 
 static constexpr uint32_t SequenceCountMask = 0x7;
@@ -164,6 +228,10 @@ public:
 
 	bool push_packet(const void *data, size_t size);
 
+	// The colour in the sequence header of the frame the parser holds.
+	// Returns false when that frame's sequence header has not been pushed.
+	bool get_color(BitstreamColor &color) const;
+
 	bool decode_is_ready(bool allow_partial_frame) const;
 
 	// A more refined version of decode_is_ready() that allows a bit more control.
@@ -199,6 +267,9 @@ private:
 	int total_blocks_in_sequence = 0;
 	uint32_t last_seq = UINT32_MAX;
 	bool decoded_frame_for_current_sequence = false;
+	// From the current sequence's header; cleared with the sequence.
+	BitstreamColor color = {};
+	bool has_color = false;
 
 	bool decode_packet(const BitstreamHeader *header);
 	bool has_pristine_bands(int bands, const uint32_t *active_block_mask, size_t word_count) const;
@@ -261,10 +332,12 @@ size_t compute_num_packets(const BlockLayout &layout, const void *mapped_meta, s
 size_t compute_num_critical_packets(const BlockLayout &layout, int bands, const void *mapped_meta,
                                     size_t packet_boundary, size_t padding_size = 0);
 
-// Copies the coded blocks into `output_bitstream`, prefixed by a sequence header,
+// Copies the coded blocks into `output_bitstream`, prefixed by a sequence header that
+// declares `color`,
 // and fills in the packet boundaries. Returns the number of packets written,
 // which is at most what compute_num_packets() reported.
-size_t packetize(const BlockLayout &layout, Packet *packets, size_t packet_boundary,
+size_t packetize(const BlockLayout &layout, const BitstreamColor &color,
+                 Packet *packets, size_t packet_boundary,
                  void *output_bitstream, size_t size,
                  const void *mapped_meta, const void *mapped_bitstream,
                  size_t padding_size = 0);

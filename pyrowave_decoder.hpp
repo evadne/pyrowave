@@ -33,6 +33,10 @@ public:
 	void clear();
 	bool push_packet(const void *data, size_t size);
 
+	// The colour in the sequence header of the frame the decoder holds.
+	// Returns false when that frame's sequence header has not been pushed.
+	bool get_color(BitstreamColor &color) const;
+
 	// If fragment path is enabled, the command buffer must support graphics operations.
 	// To synchronize, synchronize with COLOR_OUTPUT / COLOR_ATTACHMENT_WRITE / COLOR_ATTACHMENT_OPTIMAL.
 	// Views must be created with VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT.

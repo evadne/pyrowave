@@ -238,6 +238,7 @@ struct pyrowave_encoder_opaque
 	pyrowave_device device = nullptr;
 
 	BlockLayout layout;
+	BitstreamColor color = {};
 	WaveletPyramid wavelet;
 
 	id<MTLCommandQueue> queue;
@@ -1123,6 +1124,42 @@ pyrowave_result wrap_gpu_input(pyrowave_encoder encoder, const pyrowave_gpu_inpu
 
 }
 
+static_assert(PYROWAVE_COLOR_PRIMARIES_BT709 == COLOR_PRIMARIES_BT709 &&
+              PYROWAVE_COLOR_PRIMARIES_BT2020 == COLOR_PRIMARIES_BT2020,
+              "pyrowave_color_primaries differs from the bitstream's values.");
+static_assert(PYROWAVE_TRANSFER_FUNCTION_BT709 == TRANSFER_FUNCTION_BT709 &&
+              PYROWAVE_TRANSFER_FUNCTION_PQ == TRANSFER_FUNCTION_PQ,
+              "pyrowave_transfer_function differs from the bitstream's values.");
+static_assert(PYROWAVE_YCBCR_TRANSFORM_BT709 == YCBCR_TRANSFORM_BT709 &&
+              PYROWAVE_YCBCR_TRANSFORM_BT2020 == YCBCR_TRANSFORM_BT2020,
+              "pyrowave_ycbcr_transform differs from the bitstream's values.");
+static_assert(PYROWAVE_YCBCR_RANGE_FULL == YCBCR_RANGE_FULL &&
+              PYROWAVE_YCBCR_RANGE_LIMITED == YCBCR_RANGE_LIMITED,
+              "pyrowave_ycbcr_range differs from the bitstream's values.");
+static_assert(PYROWAVE_CHROMA_SITING_CENTER == CHROMA_SITING_CENTER &&
+              PYROWAVE_CHROMA_SITING_LEFT == CHROMA_SITING_LEFT,
+              "pyrowave_chroma_siting differs from the bitstream's values.");
+
+// Each field is one bit in the bitstream, so a value its enum does not define is refused
+// rather than truncated into a different colour.
+static bool color_from_api(const pyrowave_color &api, BitstreamColor &color)
+{
+	if (uint32_t(api.color_primaries) > PYROWAVE_COLOR_PRIMARIES_BT2020 ||
+	    uint32_t(api.transfer_function) > PYROWAVE_TRANSFER_FUNCTION_PQ ||
+	    uint32_t(api.ycbcr_transform) > PYROWAVE_YCBCR_TRANSFORM_BT2020 ||
+	    uint32_t(api.ycbcr_range) > PYROWAVE_YCBCR_RANGE_LIMITED ||
+	    uint32_t(api.chroma_siting) > PYROWAVE_CHROMA_SITING_LEFT)
+		return false;
+
+	color = {};
+	color.color_primaries = uint8_t(api.color_primaries);
+	color.transfer_function = uint8_t(api.transfer_function);
+	color.ycbcr_transform = uint8_t(api.ycbcr_transform);
+	color.ycbcr_range = uint8_t(api.ycbcr_range);
+	color.chroma_siting = uint8_t(api.chroma_siting);
+	return true;
+}
+
 //////
 // Public API
 
@@ -1175,6 +1212,16 @@ pyrowave_result pyrowave_encoder_create(const pyrowave_encoder_create_info *info
 void pyrowave_encoder_destroy(pyrowave_encoder encoder)
 {
 	delete encoder;
+}
+
+pyrowave_result pyrowave_encoder_set_color(pyrowave_encoder encoder, const pyrowave_color *color)
+{
+	BitstreamColor bitstream_color;
+	if (!encoder || !color || !color_from_api(*color, bitstream_color))
+		return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
+	encoder->color = bitstream_color;
+	return PYROWAVE_SUCCESS;
 }
 
 pyrowave_result pyrowave_encoder_encode_gpu_synchronous(pyrowave_encoder encoder,
@@ -1268,8 +1315,8 @@ pyrowave_result pyrowave_encoder_packetize_with_padding(pyrowave_encoder encoder
 		return result;
 
 	static_assert(sizeof(pyrowave_packet) == sizeof(Packet), "pyrowave_packet layout mismatch.");
-	*out_packets = packetize(encoder->layout, reinterpret_cast<Packet *>(packets), packet_boundary,
-	                         bitstream, size,
+	*out_packets = packetize(encoder->layout, encoder->color, reinterpret_cast<Packet *>(packets),
+	                         packet_boundary, bitstream, size,
 	                         encoder->bitstream_meta.contents, encoder->bitstream.contents,
 	                         padding_size);
 	return PYROWAVE_SUCCESS;

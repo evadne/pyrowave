@@ -8,6 +8,7 @@
 #include "pyrowave.h"
 #include "pyrowave_decoder.hpp"
 #include "pyrowave_encoder.hpp"
+#include "pyrowave_common.hpp"
 #include "logging.hpp"
 
 using namespace Granite;
@@ -27,6 +28,53 @@ struct NullLogger : Util::LoggingInterface
 };
 
 static NullLogger null_logger;
+
+static_assert(PYROWAVE_COLOR_PRIMARIES_BT709 == COLOR_PRIMARIES_BT709 &&
+              PYROWAVE_COLOR_PRIMARIES_BT2020 == COLOR_PRIMARIES_BT2020,
+              "pyrowave_color_primaries differs from the bitstream's values.");
+static_assert(PYROWAVE_TRANSFER_FUNCTION_BT709 == TRANSFER_FUNCTION_BT709 &&
+              PYROWAVE_TRANSFER_FUNCTION_PQ == TRANSFER_FUNCTION_PQ,
+              "pyrowave_transfer_function differs from the bitstream's values.");
+static_assert(PYROWAVE_YCBCR_TRANSFORM_BT709 == YCBCR_TRANSFORM_BT709 &&
+              PYROWAVE_YCBCR_TRANSFORM_BT2020 == YCBCR_TRANSFORM_BT2020,
+              "pyrowave_ycbcr_transform differs from the bitstream's values.");
+static_assert(PYROWAVE_YCBCR_RANGE_FULL == YCBCR_RANGE_FULL &&
+              PYROWAVE_YCBCR_RANGE_LIMITED == YCBCR_RANGE_LIMITED,
+              "pyrowave_ycbcr_range differs from the bitstream's values.");
+static_assert(PYROWAVE_CHROMA_SITING_CENTER == CHROMA_SITING_CENTER &&
+              PYROWAVE_CHROMA_SITING_LEFT == CHROMA_SITING_LEFT,
+              "pyrowave_chroma_siting differs from the bitstream's values.");
+
+// Each field is one bit in the bitstream, so a value its enum does not define is refused
+// rather than truncated into a different colour.
+static bool color_from_api(const pyrowave_color &api, BitstreamColor &color)
+{
+	if (uint32_t(api.color_primaries) > PYROWAVE_COLOR_PRIMARIES_BT2020 ||
+	    uint32_t(api.transfer_function) > PYROWAVE_TRANSFER_FUNCTION_PQ ||
+	    uint32_t(api.ycbcr_transform) > PYROWAVE_YCBCR_TRANSFORM_BT2020 ||
+	    uint32_t(api.ycbcr_range) > PYROWAVE_YCBCR_RANGE_LIMITED ||
+	    uint32_t(api.chroma_siting) > PYROWAVE_CHROMA_SITING_LEFT)
+		return false;
+
+	color = {};
+	color.color_primaries = uint8_t(api.color_primaries);
+	color.transfer_function = uint8_t(api.transfer_function);
+	color.ycbcr_transform = uint8_t(api.ycbcr_transform);
+	color.ycbcr_range = uint8_t(api.ycbcr_range);
+	color.chroma_siting = uint8_t(api.chroma_siting);
+	return true;
+}
+
+static pyrowave_color color_to_api(const BitstreamColor &color)
+{
+	pyrowave_color api = {};
+	api.color_primaries = pyrowave_color_primaries(color.color_primaries);
+	api.transfer_function = pyrowave_transfer_function(color.transfer_function);
+	api.ycbcr_transform = pyrowave_ycbcr_transform(color.ycbcr_transform);
+	api.ycbcr_range = pyrowave_ycbcr_range(color.ycbcr_range);
+	api.chroma_siting = pyrowave_chroma_siting(color.chroma_siting);
+	return api;
+}
 
 extern "C" {
 void pyrowave_get_api_version(uint32_t *major, uint32_t *minor, uint32_t *patch)
@@ -862,6 +910,18 @@ pyrowave_encoder_create(const pyrowave_encoder_create_info *info, pyrowave_encod
 	return PYROWAVE_SUCCESS;
 }
 
+pyrowave_result
+pyrowave_encoder_set_color(pyrowave_encoder encoder, const pyrowave_color *color)
+{
+	Util::set_thread_logging_interface(&null_logger);
+	BitstreamColor bitstream_color;
+	if (!color || !color_from_api(*color, bitstream_color))
+		return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
+	encoder->encoder.set_color(bitstream_color);
+	return PYROWAVE_SUCCESS;
+}
+
 struct WrappedViewBuffers : ViewBuffers
 {
 	ImageHandle wrapped_images[3];
@@ -1355,6 +1415,21 @@ pyrowave_decoder_push_packet(pyrowave_decoder decoder, const void *data, size_t 
 	Util::set_thread_logging_interface(&null_logger);
 	bool ret = decoder->decoder.push_packet(data, size);
 	return ret ? PYROWAVE_SUCCESS : PYROWAVE_ERROR_INVALID_ARGUMENT;
+}
+
+pyrowave_result
+pyrowave_decoder_get_color(pyrowave_decoder decoder, pyrowave_color *color)
+{
+	Util::set_thread_logging_interface(&null_logger);
+	if (!color)
+		return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
+	BitstreamColor bitstream_color;
+	if (!decoder->decoder.get_color(bitstream_color))
+		return PYROWAVE_ERROR_GENERIC;
+
+	*color = color_to_api(bitstream_color);
+	return PYROWAVE_SUCCESS;
 }
 
 // For error correction purposes, it may be okay to decode a frame which dropped some packets.

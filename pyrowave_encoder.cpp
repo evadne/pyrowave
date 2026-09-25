@@ -106,6 +106,7 @@ struct Encoder::Impl final : public WaveletBuffers
 	void compute_block_active_words(int bands, uint32_t *words, size_t word_count, const void *mapped_meta) const;
 
 	uint32_t sequence_count = 0;
+	BitstreamColor color = {};
 };
 
 float Encoder::Impl::get_quant_rdo_distortion_scale(int level, int component, int band) const
@@ -1110,6 +1111,7 @@ size_t Encoder::Impl::packetize(Packet *packets, size_t packet_boundary, size_t 
 	header.code = BITSTREAM_EXTENDED_CODE_START_OF_FRAME;
 	header.total_blocks = num_non_zero_blocks;
 	header.chroma_resolution = chroma == ChromaSubsampling::Chroma444 ? CHROMA_RESOLUTION_444 : CHROMA_RESOLUTION_420;
+	set_sequence_header_color(header, color);
 
 	assert(sizeof(header) <= size);
 	memcpy(output_bitstream, &header, sizeof(header));
@@ -1257,6 +1259,11 @@ bool Encoder::init(Device *device, int width_, int height_, ChromaSubsampling ch
 		return false;
 
 	return impl->init(device, width_, height_, chroma_, false);
+}
+
+void Encoder::set_color(const BitstreamColor &color)
+{
+	impl->color = color;
 }
 
 bool Encoder::encode(CommandBuffer &cmd, const ViewBuffers &views, const BitstreamBuffers &buffers)

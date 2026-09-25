@@ -35,6 +35,10 @@ public:
 	};
 
 	bool init(Vulkan::Device *device, int width, int height, ChromaSubsampling chroma);
+
+	// Sets the colour written into the sequence header of every frame packetized after this call.
+	// Until it is called, every colour field is written as zero.
+	void set_color(const BitstreamColor &color);
 	bool encode(Vulkan::CommandBuffer &cmd, const ViewBuffers &views, const BitstreamBuffers &buffers);
 
 	// Debug hackery

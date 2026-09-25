@@ -62,6 +62,56 @@ typedef enum pyrowave_chroma_subsampling
 	PYROWAVE_CHROMA_SUBSAMPLING_INT_MAX = 0x7fffffff
 } pyrowave_chroma_subsampling;
 
+// The colour a stream declares in the sequence header of every frame, one bit per field.
+// Each enum carries the bitstream's own values, so a zero-initialised pyrowave_color is
+// what an encoder writes until it is given a colour: BT.709 primaries, transfer function
+// and matrix, full range and centre siting.
+#define PYROWAVE_COLOR_API 1
+
+typedef enum pyrowave_color_primaries
+{
+	PYROWAVE_COLOR_PRIMARIES_BT709 = 0,
+	PYROWAVE_COLOR_PRIMARIES_BT2020 = 1,
+	PYROWAVE_COLOR_PRIMARIES_INT_MAX = 0x7fffffff
+} pyrowave_color_primaries;
+
+typedef enum pyrowave_transfer_function
+{
+	PYROWAVE_TRANSFER_FUNCTION_BT709 = 0,
+	PYROWAVE_TRANSFER_FUNCTION_PQ = 1,
+	PYROWAVE_TRANSFER_FUNCTION_INT_MAX = 0x7fffffff
+} pyrowave_transfer_function;
+
+typedef enum pyrowave_ycbcr_transform
+{
+	PYROWAVE_YCBCR_TRANSFORM_BT709 = 0,
+	PYROWAVE_YCBCR_TRANSFORM_BT2020 = 1,
+	PYROWAVE_YCBCR_TRANSFORM_INT_MAX = 0x7fffffff
+} pyrowave_ycbcr_transform;
+
+typedef enum pyrowave_ycbcr_range
+{
+	PYROWAVE_YCBCR_RANGE_FULL = 0,
+	PYROWAVE_YCBCR_RANGE_LIMITED = 1,
+	PYROWAVE_YCBCR_RANGE_INT_MAX = 0x7fffffff
+} pyrowave_ycbcr_range;
+
+typedef enum pyrowave_chroma_siting
+{
+	PYROWAVE_CHROMA_SITING_CENTER = 0,
+	PYROWAVE_CHROMA_SITING_LEFT = 1,
+	PYROWAVE_CHROMA_SITING_INT_MAX = 0x7fffffff
+} pyrowave_chroma_siting;
+
+typedef struct pyrowave_color
+{
+	pyrowave_color_primaries color_primaries;
+	pyrowave_transfer_function transfer_function;
+	pyrowave_ycbcr_transform ycbcr_transform;
+	pyrowave_ycbcr_range ycbcr_range;
+	pyrowave_chroma_siting chroma_siting;
+} pyrowave_color;
+
 typedef struct pyrowave_encoder_opaque *pyrowave_encoder;
 typedef struct pyrowave_decoder_opaque *pyrowave_decoder;
 typedef struct pyrowave_device_opaque *pyrowave_device;
@@ -442,6 +492,12 @@ typedef struct pyrowave_rate_control
 PYROWAVE_PUBLIC_API pyrowave_result
 pyrowave_encoder_create(const pyrowave_encoder_create_info *info, pyrowave_encoder *encoder);
 
+// Sets the colour written into the sequence header of every frame packetized after this call.
+// Returns PYROWAVE_ERROR_INVALID_ARGUMENT, and changes nothing, if a field holds a value its
+// enum does not define.
+PYROWAVE_PUBLIC_API pyrowave_result
+pyrowave_encoder_set_color(pyrowave_encoder encoder, const pyrowave_color *color);
+
 // Synchronous encode API. For low-latency use cases, overlapping frames in encode is meaningless
 // due to latency and the encoder is so fast anyway. This function will not block, but subsequent functions will.
 // Calling an encode operation with synchronous API clobbers any previous encoded frame.
@@ -535,6 +591,13 @@ PYROWAVE_PUBLIC_API void pyrowave_decoder_clear(pyrowave_decoder decoder);
 // Packets are pushed into the decoder until decode_is_ready says it's ready.
 PYROWAVE_PUBLIC_API pyrowave_result
 pyrowave_decoder_push_packet(pyrowave_decoder decoder, const void *data, size_t size);
+
+// The colour in the sequence header of the frame the decoder holds, the frame a decode
+// would decode. Returns PYROWAVE_ERROR_GENERIC when that frame's sequence header has not
+// been pushed: before the first frame, after pyrowave_decoder_clear(), or when the packet
+// carrying it was lost.
+PYROWAVE_PUBLIC_API pyrowave_result
+pyrowave_decoder_get_color(pyrowave_decoder decoder, pyrowave_color *color);
 
 // For error correction purposes, it may be okay to decode a frame which dropped some packets.
 PYROWAVE_PUBLIC_API bool

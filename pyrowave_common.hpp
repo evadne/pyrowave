@@ -90,6 +90,26 @@ struct BitstreamSequenceHeader
 
 static_assert(sizeof(BitstreamSequenceHeader) == 8, "BitstreamSequenceHeader is not 8 bytes.");
 
+static inline void set_sequence_header_color(BitstreamSequenceHeader &header, const BitstreamColor &color)
+{
+	header.color_primaries = color.color_primaries;
+	header.transfer_function = color.transfer_function;
+	header.ycbcr_transform = color.ycbcr_transform;
+	header.ycbcr_range = color.ycbcr_range;
+	header.chroma_siting = color.chroma_siting;
+}
+
+static inline BitstreamColor get_sequence_header_color(const BitstreamSequenceHeader &header)
+{
+	BitstreamColor color = {};
+	color.color_primaries = header.color_primaries;
+	color.transfer_function = header.transfer_function;
+	color.ycbcr_transform = header.ycbcr_transform;
+	color.ycbcr_range = header.ycbcr_range;
+	color.chroma_siting = header.chroma_siting;
+	return color;
+}
+
 struct QuantStats
 {
 	uint16_t square_error_fp16;

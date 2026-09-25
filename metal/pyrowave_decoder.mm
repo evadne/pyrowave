@@ -305,6 +305,23 @@ pyrowave_result pyrowave_decoder_push_packet(pyrowave_decoder decoder, const voi
 	return PYROWAVE_SUCCESS;
 }
 
+pyrowave_result pyrowave_decoder_get_color(pyrowave_decoder decoder, pyrowave_color *color)
+{
+	if (!decoder || !color)
+		return PYROWAVE_ERROR_INVALID_ARGUMENT;
+
+	BitstreamColor bitstream_color;
+	if (!decoder->parser.get_color(bitstream_color))
+		return PYROWAVE_ERROR_GENERIC;
+
+	color->color_primaries = pyrowave_color_primaries(bitstream_color.color_primaries);
+	color->transfer_function = pyrowave_transfer_function(bitstream_color.transfer_function);
+	color->ycbcr_transform = pyrowave_ycbcr_transform(bitstream_color.ycbcr_transform);
+	color->ycbcr_range = pyrowave_ycbcr_range(bitstream_color.ycbcr_range);
+	color->chroma_siting = pyrowave_chroma_siting(bitstream_color.chroma_siting);
+	return PYROWAVE_SUCCESS;
+}
+
 bool pyrowave_decoder_decode_is_ready(pyrowave_decoder decoder, bool allow_partial_frame)
 {
 	return decoder && decoder->parser.decode_is_ready(allow_partial_frame);

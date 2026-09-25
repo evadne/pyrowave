@@ -111,6 +111,7 @@ void BitstreamParser::clear()
 	last_seq = UINT32_MAX;
 	decoded_frame_for_current_sequence = false;
 	total_blocks_in_sequence = layout->block_count_32x32;
+	has_color = false;
 	payload_data_cpu.clear();
 }
 
@@ -188,6 +189,8 @@ bool BitstreamParser::push_packet(const void *data_, size_t size)
 				}
 
 				total_blocks_in_sequence = int(seq->total_blocks);
+				color = get_sequence_header_color(*seq);
+				has_color = true;
 			}
 			else
 			{
@@ -343,6 +346,14 @@ void BitstreamParser::mark_frame_decoded()
 	decoded_frame_for_current_sequence = true;
 }
 
+bool BitstreamParser::get_color(BitstreamColor &color_) const
+{
+	if (!has_color)
+		return false;
+	color_ = color;
+	return true;
+}
+
 //////
 // Encoder side.
 
@@ -424,7 +435,8 @@ size_t compute_num_packets(const BlockLayout &layout, const void *mapped_meta, s
 	return compute_num_critical_packets(layout, -1, mapped_meta, packet_boundary, padding_size);
 }
 
-size_t packetize(const BlockLayout &layout, Packet *packets, size_t packet_boundary,
+size_t packetize(const BlockLayout &layout, const BitstreamColor &color,
+                 Packet *packets, size_t packet_boundary,
                  void *output_bitstream_, size_t size,
                  const void *mapped_meta, const void *mapped_bitstream,
                  size_t padding_size)
@@ -451,6 +463,7 @@ size_t packetize(const BlockLayout &layout, Packet *packets, size_t packet_bound
 	header.total_blocks = uint32_t(num_non_zero_blocks);
 	header.chroma_resolution = layout.chroma == ChromaSubsampling::Chroma444 ?
 	                           CHROMA_RESOLUTION_444 : CHROMA_RESOLUTION_420;
+	set_sequence_header_color(header, color);
 
 	if (sizeof(header) > size)
 		return 0;

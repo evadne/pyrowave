@@ -37,6 +37,9 @@ struct Decoder::Impl final : public WaveletBuffers
 	int total_blocks_in_sequence = 0;
 	uint32_t last_seq = UINT32_MAX;
 	bool decoded_frame_for_current_sequence = false;
+	// From the current sequence's header; cleared with the sequence.
+	BitstreamColor color = {};
+	bool has_color = false;
 
 	bool push_packet(const void *data, size_t size);
 	bool decode(CommandBuffer &cmd, const ViewBuffers &views);
@@ -199,6 +202,8 @@ bool Decoder::Impl::push_packet(const void *data_, size_t size)
 				}
 
 				total_blocks_in_sequence = int(seq->total_blocks);
+				color = get_sequence_header_color(*seq);
+				has_color = true;
 			}
 			else
 			{
@@ -907,6 +912,7 @@ void Decoder::Impl::clear()
 	last_seq = UINT32_MAX;
 	decoded_frame_for_current_sequence = false;
 	total_blocks_in_sequence = block_count_32x32;
+	has_color = false;
 	payload_data_cpu.clear();
 }
 
@@ -1043,6 +1049,14 @@ void Decoder::clear()
 bool Decoder::push_packet(const void *data, size_t size)
 {
 	return impl->push_packet(data, size);
+}
+
+bool Decoder::get_color(BitstreamColor &color) const
+{
+	if (!impl->has_color)
+		return false;
+	color = impl->color;
+	return true;
 }
 
 bool Decoder::decode(Vulkan::CommandBuffer &cmd, const ViewBuffers &views)
