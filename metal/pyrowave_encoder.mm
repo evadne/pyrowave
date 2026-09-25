@@ -1431,4 +1431,42 @@ extern "C" bool pyrowave_bench_copy_rate_control(pyrowave_encoder encoder, size_
 	memcpy(data, staging.contents, bucket_bytes + quant_bytes);
 	return true;
 }
+
+// Reports how much of the payload scratch the last encode's quantiser used, and the scratch's
+// size. The quantiser allocates each subblock's bytes with an unbounded atomicAdd on the
+// counter at byte 0 (shaders/wavelet_quant.comp), so the counter holds the frame's true need
+// even where it would exceed the buffer; the bytes used are PayloadScratchOffset plus the
+// counter. The buffer is private, so the counter is staged through a shared buffer, after the
+// encode has landed. Returns false on any failure. Declared extern by the tool, like
+// pyrowave_bench_last_gpu_ms.
+extern "C" bool pyrowave_bench_payload_scratch(pyrowave_encoder encoder, uint64_t *used_bytes_out,
+                                               uint64_t *capacity_bytes_out)
+{
+	if (!encoder || !encoder->payload_data || !used_bytes_out || !capacity_bytes_out)
+		return false;
+	if (wait_for_result(encoder) != PYROWAVE_SUCCESS)
+		return false;
+
+	id<MTLBuffer> staging = create_scratch_buffer(encoder->device, sizeof(uint32_t),
+	                                              MTLResourceStorageModeShared, "pyrowave-bench-payload-scratch");
+	id<MTLCommandBuffer> cmd = [encoder->queue commandBuffer];
+	if (!staging || !cmd)
+		return false;
+	auto blit = [cmd blitCommandEncoder];
+	if (!blit)
+		return false;
+	[blit copyFromBuffer:encoder->payload_data sourceOffset:0 toBuffer:staging destinationOffset:0
+	                size:sizeof(uint32_t)];
+	[blit endEncoding];
+	[cmd commit];
+	[cmd waitUntilCompleted];
+	if (cmd.status != MTLCommandBufferStatusCompleted)
+		return false;
+
+	uint32_t counter;
+	memcpy(&counter, staging.contents, sizeof(counter));
+	*used_bytes_out = uint64_t(PayloadScratchOffset) + counter;
+	*capacity_bytes_out = encoder->payload_data.length;
+	return true;
+}
 #endif
