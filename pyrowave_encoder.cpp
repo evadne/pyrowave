@@ -192,8 +192,7 @@ void Encoder::Impl::init_block_meta()
 	meta_buffer = device->create_buffer(info);
 	device->set_name(*meta_buffer, "meta-buffer");
 
-	// Worst case estimate.
-	info.size = aligned_width * aligned_height * 2;
+	info.size = payload_scratch_size(block_count_8x8);
 	payload_data = device->create_buffer(info);
 	device->set_name(*payload_data, "payload-data");
 

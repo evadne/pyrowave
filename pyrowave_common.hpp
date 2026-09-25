@@ -136,6 +136,23 @@ static constexpr int MinimumImageSize = 4 << DecompositionLevels;
 static constexpr int NumComponents = 3;
 static constexpr int NumFrequencyBandsPerLevel = 4;
 
+// The quantiser writes every 8x8 block's coefficients at full precision into a scratch
+// buffer, before rate control decides which bit planes to keep. Each 4x2 subblock
+// writes one byte per bit plane: a sign plane, up to 15 quality planes (the 4 bit
+// Q_PLANES field of the code word, shaders/constants.h) and up to 3 planes counted by
+// its plane code. The payload starts at byte 8, after the quantiser's and the block
+// packer's allocation counters.
+static constexpr uint32_t QualityPlanesBits = 4;
+static constexpr uint32_t MaxPayloadBytesPerSubblock = 1 + ((1u << QualityPlanesBits) - 1) + 3;
+static constexpr uint32_t SubblocksPer8x8Block = 8;
+static constexpr uint32_t PayloadScratchOffset = 2 * sizeof(uint32_t);
+
+static inline size_t payload_scratch_size(int block_count_8x8)
+{
+	return PayloadScratchOffset +
+	       size_t(block_count_8x8) * SubblocksPer8x8Block * MaxPayloadBytesPerSubblock;
+}
+
 static inline int align(int value, int align)
 {
 	return (value + align - 1) & ~(align - 1);

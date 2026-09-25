@@ -424,10 +424,7 @@ bool create_encode_buffers(pyrowave_encoder encoder)
 		  size_t(layout.block_count_8x8) * sizeof(BlockStatsBlock), "pyrowave-block-stats" },
 		{ &encoder->meta_buffer,
 		  size_t(layout.block_count_8x8) * sizeof(BlockMeta), "pyrowave-block-meta" },
-		// Worst case estimate, same as the Vulkan encoder's. The first two words are
-		// allocation counters and the coefficient payload starts at byte 8.
-		{ &encoder->payload_data,
-		  size_t(layout.aligned_width) * size_t(layout.aligned_height) * 2, "pyrowave-payload" },
+		{ &encoder->payload_data, payload_scratch_size(layout.block_count_8x8), "pyrowave-payload" },
 		{ &encoder->quant_buffer,
 		  size_t(layout.block_count_32x32) * sizeof(uint32_t), "pyrowave-quant" },
 		{ &encoder->bucket_buffer, bucket_buffer_size(layout), "pyrowave-buckets" },
