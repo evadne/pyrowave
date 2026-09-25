@@ -1387,4 +1387,48 @@ extern "C" double pyrowave_bench_last_gpu_ms(pyrowave_encoder encoder)
 {
 	return encoder ? encoder->bench_last_gpu_ms : -1.0;
 }
+
+// Copies the last encode's rate control state, so a tool can check rate control against a
+// model of it: the bucket buffer as resolve read it (consumed_payload at byte 4, the
+// finalized total_savings_per_bucket from RDOBucketOffset, then the RDOperation entries),
+// followed by the quant buffer (the quant level resolve chose for each 32x32 block). Both
+// are private, so they are staged through a shared buffer. Reports the two buffers' sizes;
+// with data null it copies nothing, otherwise size must be their sum and the copy waits for
+// the encode to land. Returns false on any failure. Declared extern by the tool, like
+// pyrowave_bench_last_gpu_ms.
+extern "C" bool pyrowave_bench_copy_rate_control(pyrowave_encoder encoder, size_t *bucket_bytes_out,
+                                                 size_t *quant_bytes_out, void *data, size_t size)
+{
+	if (!encoder || !encoder->bucket_buffer || !encoder->quant_buffer || !bucket_bytes_out || !quant_bytes_out)
+		return false;
+	const size_t bucket_bytes = encoder->bucket_buffer.length;
+	const size_t quant_bytes = encoder->quant_buffer.length;
+	*bucket_bytes_out = bucket_bytes;
+	*quant_bytes_out = quant_bytes;
+	if (!data)
+		return true;
+	if (size != bucket_bytes + quant_bytes || wait_for_result(encoder) != PYROWAVE_SUCCESS)
+		return false;
+
+	id<MTLBuffer> staging = create_scratch_buffer(encoder->device, bucket_bytes + quant_bytes,
+	                                              MTLResourceStorageModeShared, "pyrowave-bench-rate-control");
+	id<MTLCommandBuffer> cmd = [encoder->queue commandBuffer];
+	if (!staging || !cmd)
+		return false;
+	auto blit = [cmd blitCommandEncoder];
+	if (!blit)
+		return false;
+	[blit copyFromBuffer:encoder->bucket_buffer sourceOffset:0 toBuffer:staging destinationOffset:0
+	                size:bucket_bytes];
+	[blit copyFromBuffer:encoder->quant_buffer sourceOffset:0 toBuffer:staging destinationOffset:bucket_bytes
+	                size:quant_bytes];
+	[blit endEncoding];
+	[cmd commit];
+	[cmd waitUntilCompleted];
+	if (cmd.status != MTLCommandBufferStatusCompleted)
+		return false;
+
+	memcpy(data, staging.contents, bucket_bytes + quant_bytes);
+	return true;
+}
 #endif
