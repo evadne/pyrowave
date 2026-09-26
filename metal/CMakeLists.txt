@@ -23,9 +23,10 @@ add_library(pyrowave-metal SHARED
 
 target_compile_definitions(pyrowave-metal PRIVATE PYROWAVE_EXPORT_SYMBOLS)
 target_compile_options(pyrowave-metal PRIVATE ${PYROWAVE_CXX_FLAGS})
-target_compile_options(pyrowave-metal PRIVATE
-	$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
-)
+# ARC is set on the Objective-C++ sources themselves: the Xcode generator gives C++ and
+# Objective-C++ one set of target-wide flags, where $<COMPILE_LANGUAGE:OBJCXX> is false.
+set_source_files_properties(pyrowave_common.mm pyrowave_decoder.mm pyrowave_encoder.mm
+		PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 target_link_options(pyrowave-metal PRIVATE "-fobjc-link-runtime")
 
 find_library(IOSURFACE_LIBRARY NAMES IOSurface REQUIRED)

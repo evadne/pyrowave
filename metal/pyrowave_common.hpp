@@ -11,6 +11,12 @@
 // under ARC, so the id<MTL...> members below are strong references and nothing needs
 // explicit retain or release.
 
+// Without ARC nothing the backends create would ever be released, so a build without it
+// is refused rather than left to leak every Metal object.
+#if !__has_feature(objc_arc)
+#error "The Metal backends are written for ARC: compile them with -fobjc-arc"
+#endif
+
 #import <Metal/Metal.h>
 
 #include "pyrowave_metal.h"
