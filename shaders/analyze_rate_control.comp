@@ -110,8 +110,8 @@ void emit_rdo_operations()
     }
     else
     {
-        // Dummy values.
-        cost = float(shared_rate_cost[gl_SubgroupInvocationID]);
+        // Dummy values. Stay within shared_rate_cost's 16 entries.
+        cost = float(shared_rate_cost[15]);
         distortion = 1e30;
     }
 
