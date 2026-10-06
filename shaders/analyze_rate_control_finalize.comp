@@ -21,7 +21,7 @@ void main()
 
     barrier();
 
-    for (uint step = 1u; step < gl_WorkGroupSize.x / 2u; step *= 2u)
+    for (uint step = 1u; step < gl_WorkGroupSize.x; step *= 2u)
     {
         barrier();
 
